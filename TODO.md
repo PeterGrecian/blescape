@@ -2,3 +2,4 @@ awesome!  How often can the scanning be done?  Can sources be checked individual
 
 can the display show more rapid ble changes?  Show the 4 strongest signals only otherwise sumarize.  Compactify so more fits onto 1 page
 ''
+can the mac addresses be used to identify the manufacturerer?

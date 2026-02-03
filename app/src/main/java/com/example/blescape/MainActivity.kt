@@ -263,16 +263,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
                 Text(
                     text = "Blescape",
-                    fontSize = 28.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
 
@@ -327,22 +327,22 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(DarkCard)
-                .padding(12.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (isScanning) "Scanning..." else "Next scan in ${countdown}s",
-                fontSize = 14.sp,
+                text = if (isScanning) "Scanning..." else "Next in ${countdown}s",
+                fontSize = 12.sp,
                 color = TextSecondary
             )
             LinearProgressIndicator(
                 progress = if (isScanning) 1f else (10 - countdown) / 10f,
                 modifier = Modifier
-                    .width(100.dp)
-                    .height(4.dp),
+                    .width(80.dp)
+                    .height(3.dp),
                 color = if (isScanning) AccentOrange else PrimaryBlue,
                 trackColor = DarkSurface
             )
@@ -368,26 +368,29 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onToggle)
-                    .padding(16.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = title,
-                        fontSize = 18.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = accentColor
                     )
                     Text(
                         text = subtitle,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = TextSecondary
                     )
                 }
                 Text(
                     text = if (expanded) "▼" else "▶",
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     color = TextSecondary
                 )
             }
@@ -398,7 +401,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 exit = shrinkVertically()
             ) {
                 Column(
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
                 ) {
                     content()
                 }
@@ -408,36 +411,25 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     @Composable
     fun OrientationContent(orientation: Orientation) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OrientationRow("Azimuth (Compass)", orientation.azimuth, "°", 0f, 360f)
-            OrientationRow("Pitch (Front/Back)", orientation.pitch, "°", -180f, 180f)
-            OrientationRow("Roll (Left/Right)", orientation.roll, "°", -90f, 90f)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            OrientationValue("Az", orientation.azimuth)
+            OrientationValue("Pitch", orientation.pitch)
+            OrientationValue("Roll", orientation.roll)
         }
     }
 
     @Composable
-    fun OrientationRow(label: String, value: Float, unit: String, min: Float, max: Float) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(text = label, fontSize = 14.sp, color = TextSecondary)
-                Text(
-                    text = "${value.roundToInt()}$unit",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = TextPrimary
-                )
-            }
-            LinearProgressIndicator(
-                progress = ((value - min) / (max - min)).coerceIn(0f, 1f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .padding(top = 4.dp),
-                color = AccentOrange,
-                trackColor = DarkSurface
+    fun OrientationValue(label: String, value: Float) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = label, fontSize = 11.sp, color = TextSecondary)
+            Text(
+                text = "${value.roundToInt()}°",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium,
+                color = AccentOrange
             )
         }
     }
@@ -451,14 +443,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 color = TextSecondary
             )
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                networks.take(10).forEach { network ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                networks.take(4).forEach { network ->
                     WifiNetworkRow(network)
                 }
-                if (networks.size > 10) {
+                if (networks.size > 4) {
                     Text(
-                        text = "...and ${networks.size - 10} more",
-                        fontSize = 12.sp,
+                        text = "...and ${networks.size - 4} more",
+                        fontSize = 11.sp,
                         color = TextSecondary
                     )
                 }
@@ -471,32 +463,31 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(DarkSurface)
-                .padding(12.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = network.ssid,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = TextPrimary
                 )
                 Text(
                     text = "${if (network.frequency < 3000) "2.4" else "5"} GHz • ${network.bssid}",
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = TextSecondary
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "${network.rssi}", fontSize = 10.sp, color = TextSecondary)
                 SignalStrengthBars(rssi = network.rssi)
-                Text(
-                    text = "${network.rssi} dBm",
-                    fontSize = 11.sp,
-                    color = TextSecondary
-                )
             }
         }
     }
@@ -510,14 +501,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 color = TextSecondary
             )
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                devices.take(10).forEach { device ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                devices.take(4).forEach { device ->
                     BleDeviceRow(device)
                 }
-                if (devices.size > 10) {
+                if (devices.size > 4) {
                     Text(
-                        text = "...and ${devices.size - 10} more",
-                        fontSize = 12.sp,
+                        text = "...and ${devices.size - 4} more",
+                        fontSize = 11.sp,
                         color = TextSecondary
                     )
                 }
@@ -530,32 +521,31 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(6.dp))
                 .background(DarkSurface)
-                .padding(12.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = device.name ?: "<Unknown>",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = TextPrimary
                 )
                 Text(
                     text = device.address,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     color = TextSecondary
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "${device.rssi}", fontSize = 10.sp, color = TextSecondary)
                 SignalStrengthBars(rssi = device.rssi)
-                Text(
-                    text = "${device.rssi} dBm",
-                    fontSize = 11.sp,
-                    color = TextSecondary
-                )
             }
         }
     }

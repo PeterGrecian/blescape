@@ -1,5 +1,18 @@
-awesome!  How often can the scanning be done?  Can sources be checked individually as well as background global sweeps?  If so I would check overall every 10 seconds and for changes to known sources - for moving lime bikes or walking people every 2 seconds
+## Done
 
-can the display show more rapid ble changes?  Show the 4 strongest signals only otherwise sumarize.  Compactify so more fits onto 1 page
-''
-can the mac addresses be used to identify the manufacturerer?
+- Global WiFi sweep every 10s; continuous BLE scanning with real-time updates
+  (callbacks fire every 1-3s per device — no more 5s on / 5s dead cycle)
+- Stale BLE devices pruned after 20s of silence
+- Show 4 strongest signals only, summarize the rest
+- Compactified layout (smaller padding, fonts, inline signal bars)
+- MAC address → manufacturer via bundled OUI table (WiFi and BLE rows both show it)
+  - Note: many BLE devices (especially iOS) use rotating random addresses;
+    OUI lookup only works for public/static addresses
+
+## Up next
+
+- Per-device pin / monitor: tap a device to "lock on" and see its RSSI over time
+- Auto-classify mobility vendors (Lime, Bird, etc.) — seed OUI table with their prefixes
+  and surface them prominently
+- Expand OUI table or add periodic online refresh
+- "Xs ago" timestamp on BLE devices so you can see which ones just disappeared

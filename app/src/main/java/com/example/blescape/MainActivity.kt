@@ -56,7 +56,8 @@ data class WifiNetwork(
 data class BleDevice(
     val name: String?,
     val address: String,
-    val rssi: Int
+    val rssi: Int,
+    val lastSeen: Long = System.currentTimeMillis()
 )
 
 data class Orientation(
@@ -74,6 +75,49 @@ private val SecondaryTeal = Color(0xFF80CBC4)
 private val AccentOrange = Color(0xFFFFB74D)
 private val TextPrimary = Color(0xFFE0E0E0)
 private val TextSecondary = Color(0xFF9E9E9E)
+
+// OUI prefix → manufacturer (partial; covers common consumer devices).
+// Many BLE devices (especially iOS) use random/private addresses that rotate,
+// so lookup will only match public addresses.
+private val OUI_MANUFACTURERS = mapOf(
+    // Apple
+    "00:1A:80" to "Apple", "28:6C:07" to "Apple", "3C:15:C2" to "Apple",
+    "44:D9:E7" to "Apple", "48:D7:05" to "Apple", "58:E2:88" to "Apple",
+    "6C:19:C0" to "Apple", "70:3A:CB" to "Apple", "78:E7:D1" to "Apple",
+    "A4:58:40" to "Apple", "B8:78:8C" to "Apple", "D0:A8:39" to "Apple",
+    "F8:E4:FB" to "Apple",
+    // Samsung
+    "08:FE:81" to "Samsung", "18:47:2B" to "Samsung", "20:64:32" to "Samsung",
+    "28:5F:96" to "Samsung", "44:24:EC" to "Samsung", "68:27:37" to "Samsung",
+    "84:16:69" to "Samsung", "B4:EF:26" to "Samsung",
+    // Google
+    "58:CB:31" to "Google", "60:F8:1D" to "Google",
+    // Xiaomi
+    "18:FE:88" to "Xiaomi", "34:86:5A" to "Xiaomi",
+    // Huawei
+    "4C:11:CF" to "Huawei", "D8:E8:44" to "Huawei",
+    // Cisco
+    "00:00:0C" to "Cisco", "00:13:07" to "Cisco",
+    // TP-Link
+    "B0:95:74" to "TP-Link", "AC:84:31" to "TP-Link", "CC:30:60" to "TP-Link",
+    // ASUS
+    "CC:06:E2" to "ASUS", "D8:F3:B1" to "ASUS",
+    // D-Link
+    "44:E9:43" to "D-Link",
+    // Linksys
+    "00:23:68" to "Linksys",
+    // Intel
+    "8C:EC:4B" to "Intel",
+    // Qualcomm
+    "AC:81:DA" to "Qualcomm",
+    // Sony
+    "00:1A:7D" to "Sony",
+    // LG
+    "B8:18:8D" to "LG"
+)
+
+private fun manufacturerFromMac(mac: String): String? =
+    OUI_MANUFACTURERS[mac.take(8).uppercase()]
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
@@ -124,6 +168,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         @SuppressLint("MissingPermission")
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == WifiManager.SCAN_RESULTS_AVAILABLE_ACTION) {
+                isScanning.value = false
                 val results = wifiManager.scanResults
                 wifiNetworks.value = results.map { result ->
                     WifiNetwork(
@@ -477,7 +522,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     color = TextPrimary
                 )
                 Text(
-                    text = "${if (network.frequency < 3000) "2.4" else "5"} GHz • ${network.bssid}",
+                    text = buildString {
+                        manufacturerFromMac(network.bssid)?.let { append("$it • ") }
+                        append(if (network.frequency < 3000) "2.4" else "5")
+                        append(" GHz")
+                    },
                     fontSize = 10.sp,
                     color = TextSecondary
                 )
@@ -535,7 +584,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     color = TextPrimary
                 )
                 Text(
-                    text = device.address,
+                    text = manufacturerFromMac(device.address) ?: device.address,
                     fontSize = 10.sp,
                     color = TextSecondary
                 )
@@ -603,7 +652,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
 
-        // Start periodic scanning
+        // Start continuous BLE scan (updates fire every 1-3s per device)
+        try {
+            bleScanner?.startScan(bleScanCallback)
+        } catch (e: Exception) { }
+
+        // Start periodic WiFi scan + countdown
         startPeriodicScan()
     }
 
@@ -635,31 +689,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         isScanning.value = true
         scanCountdown.value = 10
 
-        // WiFi scan
+        // WiFi scan (results arrive via wifiScanReceiver which clears isScanning)
         try {
             wifiManager.startScan()
         } catch (e: Exception) {
-            // Handle scan failure
-        }
-
-        // BLE scan - clear old results and start fresh
-        bleDevices.value = emptyList()
-        try {
-            bleScanner?.stopScan(bleScanCallback)
-            bleScanner?.startScan(bleScanCallback)
-
-            // Stop BLE scan after 5 seconds
-            handler.postDelayed({
-                try {
-                    bleScanner?.stopScan(bleScanCallback)
-                } catch (e: Exception) {
-                    // Ignore
-                }
-                isScanning.value = false
-            }, 5000)
-        } catch (e: Exception) {
             isScanning.value = false
         }
+
+        // Prune BLE devices not seen in the last 20 seconds
+        val cutoff = System.currentTimeMillis() - 20_000L
+        bleDevices.value = bleDevices.value.filter { it.lastSeen > cutoff }
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -687,12 +726,14 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             rotationSensor?.let {
                 sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
             }
+            try { bleScanner?.startScan(bleScanCallback) } catch (e: Exception) { }
         }
     }
 
     override fun onPause() {
         super.onPause()
         sensorManager.unregisterListener(this)
+        try { bleScanner?.stopScan(bleScanCallback) } catch (e: Exception) { }
     }
 
     override fun onDestroy() {

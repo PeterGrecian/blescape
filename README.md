@@ -32,21 +32,39 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Deploy to Phone
 
-WSL2 can't see USB devices directly, but Windows ADB works from WSL:
+WSL2 can't see USB devices directly. Deploy via PowerShell using the Windows
+copy of adb (`C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe`).
+
+**Step 1 — Copy APK to a Windows path** (adb.exe can't read WSL filesystem paths):
 
 ```bash
-# Check device is connected
-/mnt/c/Users/*/AppData/Local/Android/Sdk/platform-tools/adb.exe devices
-
-# Install
-/mnt/c/Users/*/AppData/Local/Android/Sdk/platform-tools/adb.exe install -r app/build/outputs/apk/debug/app-debug.apk
+cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/Users/tot/Downloads/app-debug.apk
 ```
 
-### One-liner Build & Deploy
+**Step 2 — Install from PowerShell:**
+
+```powershell
+& 'C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe' install 'C:\Users\tot\Downloads\app-debug.apk'
+```
+
+Or as a single bash command that does both steps:
 
 ```bash
-./gradlew assembleDebug && /mnt/c/Users/*/AppData/Local/Android/Sdk/platform-tools/adb.exe install -r app/build/outputs/apk/debug/app-debug.apk
+cp app/build/outputs/apk/debug/app-debug.apk /mnt/c/Users/tot/Downloads/app-debug.apk && powershell.exe -NoProfile -Command "& 'C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe' install 'C:\Users\tot\Downloads\app-debug.apk'"
 ```
+
+### Device not showing up?
+
+If `adb devices` returns empty or `unauthorized`, kill and restart the adb
+server from PowerShell — this fixes it every time:
+
+```powershell
+& 'C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe' kill-server
+& 'C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe' start-server
+& 'C:\Users\tot\AppData\Local\Android\Sdk\platform-tools\adb.exe' devices
+```
+
+Accept the "Allow USB Debugging" prompt on the phone when it appears.
 
 ## Phone Setup
 

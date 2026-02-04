@@ -11,7 +11,7 @@
 
 ## Up next
 
-- Per-device pin / monitor: tap a device to "lock on" and see its RSSI over time
+- Per-device pin / monitor: tap a device to "lock on" and see its RSSI over time .  
 - Auto-classify mobility vendors (Lime, Bird, etc.) — seed OUI table with their prefixes
   and surface them prominently
 - Expand OUI table or add periodic online refresh

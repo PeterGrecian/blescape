@@ -16,3 +16,9 @@
   and surface them prominently
 - Expand OUI table or add periodic online refresh
 - "Xs ago" timestamp on BLE devices so you can see which ones just disappeared
+
+
+in central london getting 300+ ble and 60+ wifi!
+many do identify as lime and forrest bikes.  They should have a separate tone.  
+
+do audio syntheses based on the sources.  Give them static random directions for now and do simple stereo based on head rotation.

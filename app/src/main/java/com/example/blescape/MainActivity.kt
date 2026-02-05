@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (isScanning) "Scanning..." else "Next in ${countdown}s",
+                text = if (isScanning) "WiFi scanning..." else "WiFi scan in ${countdown}s",
                 fontSize = 12.sp,
                 color = TextSecondary
             )

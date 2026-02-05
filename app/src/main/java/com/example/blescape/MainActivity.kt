@@ -44,6 +44,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlin.math.roundToInt
+import com.example.blescape.audio.AudioEngine
+import com.example.blescape.audio.AudioDevice
+import com.example.blescape.audio.DeviceType
+import com.example.blescape.audio.AudioSettings
+import com.example.blescape.audio.AudioSettingsManager
 
 // Data classes
 data class WifiNetwork(
@@ -126,6 +131,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var bleScanner: BluetoothLeScanner? = null
     private lateinit var sensorManager: SensorManager
     private var rotationSensor: Sensor? = null
+    private lateinit var audioEngine: AudioEngine
+    private lateinit var audioSettingsManager: AudioSettingsManager
 
     private val handler = Handler(Looper.getMainLooper())
     private val scanInterval = 10000L // 10 seconds
@@ -137,6 +144,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var permissionsGranted = mutableStateOf(false)
     private var scanCountdown = mutableStateOf(10)
     private var isScanning = mutableStateOf(false)
+    private var audioEnabled = mutableStateOf(false)
+    private var audioSettings = mutableStateOf(AudioSettings())
 
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
@@ -178,6 +187,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         frequency = result.frequency
                     )
                 }.sortedByDescending { it.rssi }
+                updateAudioDevices()
             }
         }
     }
@@ -198,6 +208,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 currentList.add(device)
             }
             bleDevices.value = currentList.sortedByDescending { it.rssi }
+            updateAudioDevices()
         }
 
         override fun onScanFailed(errorCode: Int) {
@@ -215,6 +226,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         bleScanner = bluetoothAdapter?.bluetoothLeScanner
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        audioEngine = AudioEngine(applicationContext)
+        audioSettingsManager = AudioSettingsManager(applicationContext)
+        audioSettings.value = audioSettingsManager.load()
+        audioEngine.updateSettings(audioSettings.value)
 
         setContent {
             BleScapeApp()
@@ -232,6 +247,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val hasPermissions by permissionsGranted
         val countdown by scanCountdown
         val scanning by isScanning
+        val audioOn by audioEnabled
+        val settings by audioSettings
 
         MaterialTheme(
             colorScheme = darkColorScheme(
@@ -254,7 +271,23 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         bleDevices = ble,
                         orientation = orient,
                         countdown = countdown,
-                        isScanning = scanning
+                        isScanning = scanning,
+                        audioEnabled = audioOn,
+                        audioSettings = settings,
+                        onAudioToggle = { enabled ->
+                            audioEnabled.value = enabled
+                            if (enabled) {
+                                audioEngine.start()
+                                updateAudioDevices()
+                            } else {
+                                audioEngine.stop()
+                            }
+                        },
+                        onSettingsChange = { newSettings ->
+                            audioSettings.value = newSettings
+                            audioEngine.updateSettings(newSettings)
+                            audioSettingsManager.save(newSettings)
+                        }
                     )
                 }
             }
@@ -299,11 +332,16 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         bleDevices: List<BleDevice>,
         orientation: Orientation,
         countdown: Int,
-        isScanning: Boolean
+        isScanning: Boolean,
+        audioEnabled: Boolean,
+        audioSettings: AudioSettings,
+        onAudioToggle: (Boolean) -> Unit,
+        onSettingsChange: (AudioSettings) -> Unit
     ) {
         var wifiExpanded by remember { mutableStateOf(true) }
         var bleExpanded by remember { mutableStateOf(true) }
         var orientationExpanded by remember { mutableStateOf(true) }
+        var audioSettingsExpanded by remember { mutableStateOf(false) }
 
         LazyColumn(
             modifier = Modifier
@@ -324,6 +362,27 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             // Scan status indicator
             item {
                 ScanStatusBar(countdown = countdown, isScanning = isScanning)
+            }
+
+            // Audio control
+            item {
+                AudioControlCard(enabled = audioEnabled, onToggle = onAudioToggle)
+            }
+
+            // Audio settings panel
+            item {
+                ExpandablePanel(
+                    title = "Audio Settings",
+                    subtitle = if (audioEnabled) "Active" else "Inactive",
+                    expanded = audioSettingsExpanded,
+                    onToggle = { audioSettingsExpanded = !audioSettingsExpanded },
+                    accentColor = PrimaryBlue
+                ) {
+                    AudioSettingsContent(
+                        settings = audioSettings,
+                        onSettingsChange = onSettingsChange
+                    )
+                }
             }
 
             // Orientation Panel
@@ -390,6 +449,145 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     .height(3.dp),
                 color = if (isScanning) AccentOrange else PrimaryBlue,
                 trackColor = DarkSurface
+            )
+        }
+    }
+
+    @Composable
+    fun AudioControlCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(DarkCard)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Spatial Audio",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
+            )
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = PrimaryBlue,
+                    checkedTrackColor = PrimaryBlue.copy(alpha = 0.5f),
+                    uncheckedThumbColor = TextSecondary,
+                    uncheckedTrackColor = DarkSurface
+                )
+            )
+        }
+    }
+
+    @Composable
+    fun AudioSettingsContent(
+        settings: AudioSettings,
+        onSettingsChange: (AudioSettings) -> Unit
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Master Volume
+            SettingSlider(
+                label = "Master Volume",
+                value = settings.masterVolume,
+                valueRange = 0f..1f,
+                valueText = "${(settings.masterVolume * 100).roundToInt()}%",
+                onValueChange = { onSettingsChange(settings.copy(masterVolume = it)) }
+            )
+
+            // RSSI Threshold
+            SettingSlider(
+                label = "RSSI Threshold",
+                value = settings.rssiThreshold.toFloat(),
+                valueRange = -100f..-50f,
+                valueText = "${settings.rssiThreshold} dBm",
+                onValueChange = { onSettingsChange(settings.copy(rssiThreshold = it.roundToInt())) }
+            )
+
+            // Max Active Devices
+            SettingSlider(
+                label = "Max Active Devices",
+                value = settings.maxActiveDevices.toFloat(),
+                valueRange = 1f..100f,
+                valueText = "${settings.maxActiveDevices}",
+                onValueChange = { onSettingsChange(settings.copy(maxActiveDevices = it.roundToInt())) }
+            )
+
+            // Volume Curve Exponent
+            SettingSlider(
+                label = "Volume Curve",
+                value = settings.volumeCurveExponent,
+                valueRange = 1f..4f,
+                valueText = String.format("%.1f", settings.volumeCurveExponent),
+                onValueChange = { onSettingsChange(settings.copy(volumeCurveExponent = it)) }
+            )
+
+            // Behind Attenuation
+            SettingSlider(
+                label = "Behind Attenuation",
+                value = settings.behindAttenuation,
+                valueRange = 0f..1f,
+                valueText = "${(settings.behindAttenuation * 100).roundToInt()}%",
+                onValueChange = { onSettingsChange(settings.copy(behindAttenuation = it)) }
+            )
+
+            // Reset button
+            Button(
+                onClick = {
+                    onSettingsChange(AudioSettings())
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DarkSurface,
+                    contentColor = TextSecondary
+                )
+            ) {
+                Text("Reset to Defaults", fontSize = 12.sp)
+            }
+        }
+    }
+
+    @Composable
+    fun SettingSlider(
+        label: String,
+        value: Float,
+        valueRange: ClosedFloatingPointRange<Float>,
+        valueText: String,
+        onValueChange: (Float) -> Unit
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+                Text(
+                    text = valueText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = PrimaryBlue
+                )
+            }
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                valueRange = valueRange,
+                colors = SliderDefaults.colors(
+                    thumbColor = PrimaryBlue,
+                    activeTrackColor = PrimaryBlue,
+                    inactiveTrackColor = DarkSurface
+                )
             )
         }
     }
@@ -706,12 +904,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
             SensorManager.getOrientation(rotationMatrix, orientationAngles)
 
-            orientation.value = Orientation(
+            val newOrientation = Orientation(
                 azimuth = Math.toDegrees(orientationAngles[0].toDouble()).toFloat().let {
                     if (it < 0) it + 360 else it
                 },
                 pitch = Math.toDegrees(orientationAngles[1].toDouble()).toFloat(),
                 roll = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+            )
+            orientation.value = newOrientation
+            audioEngine.updateOrientation(
+                com.example.blescape.audio.Orientation(
+                    newOrientation.azimuth,
+                    newOrientation.pitch,
+                    newOrientation.roll
+                )
             )
         }
     }
@@ -727,6 +933,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
             }
             try { bleScanner?.startScan(bleScanCallback) } catch (e: Exception) { }
+            if (audioEnabled.value) {
+                audioEngine.start()
+            }
         }
     }
 
@@ -734,16 +943,40 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         super.onPause()
         sensorManager.unregisterListener(this)
         try { bleScanner?.stopScan(bleScanCallback) } catch (e: Exception) { }
+        audioEngine.stop()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
+        audioEngine.stop()
         try {
             unregisterReceiver(wifiScanReceiver)
             bleScanner?.stopScan(bleScanCallback)
         } catch (e: Exception) {
             // Ignore
         }
+    }
+
+    private fun updateAudioDevices() {
+        val bleAudioDevices = bleDevices.value.map { ble ->
+            AudioDevice(
+                address = ble.address,
+                name = ble.name,
+                rssi = ble.rssi,
+                type = DeviceType.BLE
+            )
+        }
+
+        val wifiAudioDevices = wifiNetworks.value.map { wifi ->
+            AudioDevice(
+                address = wifi.bssid,
+                name = wifi.ssid,
+                rssi = wifi.rssi,
+                type = DeviceType.WIFI
+            )
+        }
+
+        audioEngine.updateDevices(bleAudioDevices, wifiAudioDevices)
     }
 }

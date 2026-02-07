@@ -24,6 +24,8 @@ class AudioEngine(context: Context) {
     private val currentOrientation = AtomicReference(Orientation(0f, 0f, 0f))
     private val currentSettings = AtomicReference(AudioSettings())
 
+    var onDebugInfo: ((String) -> Unit)? = null
+
     private val audioStateManager = AudioStateManager(context)
     private val toneGenerator = ToneGenerator(SAMPLE_RATE)
     private val spatialMixer = SpatialMixer()
@@ -91,6 +93,12 @@ class AudioEngine(context: Context) {
 
     fun updateDevices(bleDevices: List<AudioDevice>, wifiDevices: List<AudioDevice>) {
         val settings = currentSettings.get()
+
+        // If sources are frozen, don't update the device list
+        if (settings.freezeSources && currentDevices.get().isNotEmpty()) {
+            return
+        }
+
         val allDevices = (bleDevices + wifiDevices)
             .filter { it.rssi > settings.rssiThreshold }
             .sortedByDescending { it.rssi }
@@ -117,13 +125,24 @@ class AudioEngine(context: Context) {
                 val devices = currentDevices.get().take(settings.maxActiveDevices)
                 val orientation = currentOrientation.get()
 
-                // Debug logging every 100 frames (~2.3 seconds)
-                if (frameCount % 100 == 0 && devices.isNotEmpty()) {
-                    Log.d(TAG, "Orientation azimuth: ${orientation.azimuth}, Devices: ${devices.size}")
+                // Debug logging and UI update every 50 frames (~1.1 seconds)
+                if (frameCount % 50 == 0 && devices.isNotEmpty()) {
+                    Log.d(TAG, "=== Frame $frameCount === Az: ${orientation.azimuth.toInt()}° | Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
+
+                    val debugText = buildString {
+                        appendLine("Phone Azimuth: ${orientation.azimuth.toInt()}°")
+                        appendLine("Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
+                        appendLine()
+                    }
+                    onDebugInfo?.invoke(debugText)
                 }
 
-                for (device in devices) {
-                    val state = audioStateManager.getOrCreateState(device)
+                val debugLines = mutableListOf<String>()
+
+                for ((index, device) in devices.withIndex()) {
+                    // For single device mode, place it at world azimuth 0° (north)
+                    val forcedAzimuth = if (settings.maxActiveDevices == 1) 0f else null
+                    val state = audioStateManager.getOrCreateState(device, forcedAzimuth)
 
                     val targetVolume = spatialMixer.rssiToVolume(device.rssi, settings.volumeCurveExponent)
                     audioStateManager.updateVolume(state, targetVolume)
@@ -137,26 +156,37 @@ class AudioEngine(context: Context) {
                         deviceBuffer
                     )
 
-                    // Special case: if max devices is 1, place tone at 0 degrees (straight ahead)
-                    val relativeAngle = if (settings.maxActiveDevices == 1) {
-                        0f
-                    } else {
-                        spatialMixer.calculateRelativeAngle(
-                            orientation.azimuth,
-                            state.worldAzimuth
-                        )
-                    }
+                    val relativeAngle = spatialMixer.calculateRelativeAngle(
+                        orientation.azimuth,
+                        state.worldAzimuth
+                    )
                     val pan = spatialMixer.calculateStereoPan(relativeAngle, settings.behindAttenuation)
 
-                    // Debug logging for first device every 100 frames
-                    if (frameCount % 100 == 0 && devices.indexOf(device) == 0) {
-                        Log.d(TAG, "Device: ${state.frequency.toInt()}Hz, World: ${state.worldAzimuth}°, Relative: ${relativeAngle}°, Pan: L=${pan.left} R=${pan.right}")
+                    // Debug logging for first device every 50 frames
+                    if (frameCount % 50 == 0 && index == 0) {
+                        Log.d(TAG, "  Device 0: ${state.frequency.toInt()}Hz @ WorldAz=${state.worldAzimuth.toInt()}° | RelAngle=${relativeAngle.toInt()}° | Pan L=${String.format("%.2f", pan.left)} R=${String.format("%.2f", pan.right)} | Vol=${String.format("%.2f", state.smoothedVolume)}")
+                    }
+
+                    // Collect debug info for UI
+                    if (frameCount % 50 == 0 && index < 5) {
+                        debugLines.add("${index+1}. ${state.frequency.toInt()}Hz @ ${state.worldAzimuth.toInt()}° | Rel:${relativeAngle.toInt()}° | L:${String.format("%.2f", pan.left)} R:${String.format("%.2f", pan.right)} | Vol:${String.format("%.2f", state.smoothedVolume)}")
                     }
 
                     for (i in deviceBuffer.indices) {
                         leftChannel[i] += deviceBuffer[i] * pan.left
                         rightChannel[i] += deviceBuffer[i] * pan.right
                     }
+                }
+
+                // Send debug info to UI
+                if (frameCount % 50 == 0 && debugLines.isNotEmpty()) {
+                    val debugText = buildString {
+                        appendLine("Phone Azimuth: ${orientation.azimuth.toInt()}°")
+                        appendLine("Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
+                        appendLine()
+                        debugLines.forEach { appendLine(it) }
+                    }
+                    onDebugInfo?.invoke(debugText)
                 }
 
                 for (i in leftChannel.indices) {

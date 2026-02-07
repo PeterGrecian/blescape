@@ -19,11 +19,11 @@ class AudioStateManager(context: Context) {
         private const val VOLUME_SMOOTHING_ALPHA = 0.1f
     }
 
-    fun getOrCreateState(device: AudioDevice): DeviceAudioState {
+    fun getOrCreateState(device: AudioDevice, forcedAzimuth: Float? = null): DeviceAudioState {
         val deviceId = "${device.type}:${device.address}"
 
         return deviceStates.getOrPut(deviceId) {
-            val worldAzimuth = prefs.getFloat(deviceId, -1f).let { saved ->
+            val worldAzimuth = forcedAzimuth ?: prefs.getFloat(deviceId, -1f).let { saved ->
                 if (saved >= 0f) {
                     saved
                 } else {
@@ -40,6 +40,11 @@ class AudioStateManager(context: Context) {
                 frequency = frequency,
                 worldAzimuth = worldAzimuth
             )
+        }.also {
+            // Update azimuth if forced (for single device mode)
+            if (forcedAzimuth != null && it.worldAzimuth != forcedAzimuth) {
+                it.worldAzimuth = forcedAzimuth
+            }
         }
     }
 

@@ -15,7 +15,7 @@ enum class DeviceType {
 data class DeviceAudioState(
     val deviceId: String,
     val frequency: Float,
-    val worldAzimuth: Float,
+    var worldAzimuth: Float,
     var phase: Float = 0f,
     var smoothedVolume: Float = 0f
 )

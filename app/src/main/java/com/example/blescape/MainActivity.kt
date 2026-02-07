@@ -146,6 +146,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var isScanning = mutableStateOf(false)
     private var audioEnabled = mutableStateOf(false)
     private var audioSettings = mutableStateOf(AudioSettings())
+    private var audioDebugInfo = mutableStateOf("")
 
     private val rotationMatrix = FloatArray(9)
     private val orientationAngles = FloatArray(3)
@@ -227,6 +228,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         audioEngine = AudioEngine(applicationContext)
+        audioEngine.onDebugInfo = { info ->
+            audioDebugInfo.value = info
+        }
         audioSettingsManager = AudioSettingsManager(applicationContext)
         audioSettings.value = audioSettingsManager.load()
         audioEngine.updateSettings(audioSettings.value)
@@ -249,6 +253,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         val scanning by isScanning
         val audioOn by audioEnabled
         val settings by audioSettings
+        val debugInfo by audioDebugInfo
 
         MaterialTheme(
             colorScheme = darkColorScheme(
@@ -274,6 +279,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         isScanning = scanning,
                         audioEnabled = audioOn,
                         audioSettings = settings,
+                        audioDebugInfo = debugInfo,
                         onAudioToggle = { enabled ->
                             audioEnabled.value = enabled
                             if (enabled) {
@@ -335,6 +341,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         isScanning: Boolean,
         audioEnabled: Boolean,
         audioSettings: AudioSettings,
+        audioDebugInfo: String,
         onAudioToggle: (Boolean) -> Unit,
         onSettingsChange: (AudioSettings) -> Unit
     ) {
@@ -342,6 +349,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         var bleExpanded by remember { mutableStateOf(true) }
         var orientationExpanded by remember { mutableStateOf(true) }
         var audioSettingsExpanded by remember { mutableStateOf(false) }
+        var audioDebugExpanded by remember { mutableStateOf(false) }
 
         LazyColumn(
             modifier = Modifier
@@ -382,6 +390,27 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         settings = audioSettings,
                         onSettingsChange = onSettingsChange
                     )
+                }
+            }
+
+            // Audio debug panel
+            if (audioEnabled) {
+                item {
+                    ExpandablePanel(
+                        title = "Audio Debug",
+                        subtitle = "Real-time info",
+                        expanded = audioDebugExpanded,
+                        onToggle = { audioDebugExpanded = !audioDebugExpanded },
+                        accentColor = AccentOrange
+                    ) {
+                        Text(
+                            text = audioDebugInfo.ifEmpty { "No debug info yet..." },
+                            fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = TextPrimary,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
 
@@ -536,6 +565,41 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 valueText = "${(settings.behindAttenuation * 100).roundToInt()}%",
                 onValueChange = { onSettingsChange(settings.copy(behindAttenuation = it)) }
             )
+
+            // Freeze Sources Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(DarkSurface)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Freeze Sources (Test Mode)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Lock devices, only rotation changes sound",
+                        fontSize = 10.sp,
+                        color = TextSecondary
+                    )
+                }
+                Switch(
+                    checked = settings.freezeSources,
+                    onCheckedChange = { onSettingsChange(settings.copy(freezeSources = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = AccentOrange,
+                        checkedTrackColor = AccentOrange.copy(alpha = 0.5f),
+                        uncheckedThumbColor = TextSecondary,
+                        uncheckedTrackColor = DarkSurface
+                    )
+                )
+            }
 
             // Reset button
             Button(

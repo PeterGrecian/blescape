@@ -8,7 +8,8 @@ data class AudioSettings(
     val rssiThreshold: Int = -90,              // -100 to -50 dBm
     val maxActiveDevices: Int = 40,            // 1 - 100
     val volumeCurveExponent: Float = 2.0f,     // 1.0 - 4.0 (quadratic default)
-    val behindAttenuation: Float = 0.3f        // 0.0 - 1.0 (30% default)
+    val behindAttenuation: Float = 0.3f,       // 0.0 - 1.0 (30% default)
+    val freezeSources: Boolean = false         // Freeze current sources for testing
 )
 
 class AudioSettingsManager(context: Context) {
@@ -24,7 +25,8 @@ class AudioSettingsManager(context: Context) {
             rssiThreshold = prefs.getInt("rssi_threshold", -90),
             maxActiveDevices = prefs.getInt("max_active_devices", 40),
             volumeCurveExponent = prefs.getFloat("volume_curve_exponent", 2.0f),
-            behindAttenuation = prefs.getFloat("behind_attenuation", 0.3f)
+            behindAttenuation = prefs.getFloat("behind_attenuation", 0.3f),
+            freezeSources = prefs.getBoolean("freeze_sources", false)
         )
     }
 
@@ -35,6 +37,7 @@ class AudioSettingsManager(context: Context) {
             .putInt("max_active_devices", settings.maxActiveDevices)
             .putFloat("volume_curve_exponent", settings.volumeCurveExponent)
             .putFloat("behind_attenuation", settings.behindAttenuation)
+            .putBoolean("freeze_sources", settings.freezeSources)
             .apply()
     }
 }

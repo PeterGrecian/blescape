@@ -15,9 +15,8 @@ class ToneGenerator(private val sampleRate: Int = 44100) {
     private val phaseAccumulators = HashMap<String, Float>()
 
     fun deviceFrequency(address: String, name: String?): Float {
-        val hash = "$address:${name ?: ""}".hashCode()
-        val normalized = (hash and 0x7FFFFFFF) / Integer.MAX_VALUE.toFloat()
-        return 200f + (normalized * 1800f)
+        // Fixed 200 Hz for testing panning
+        return 200f
     }
 
     fun generateSamples(
@@ -28,15 +27,22 @@ class ToneGenerator(private val sampleRate: Int = 44100) {
         outputBuffer: FloatArray
     ) {
         var phase = phaseAccumulators[deviceId] ?: 0f
-        val phaseIncrement = frequency * LOOKUP_TABLE_SIZE / sampleRate
+        val phaseIncrement = frequency / sampleRate
 
         for (i in 0 until frameCount) {
-            val index = phase.toInt() % LOOKUP_TABLE_SIZE
-            outputBuffer[i] = SINE_TABLE[index] * volume
+            // Generate triangle wave: -1 to +1
+            val normalizedPhase = phase - phase.toInt()
+            val triangleValue = if (normalizedPhase < 0.5f) {
+                4f * normalizedPhase - 1f
+            } else {
+                -4f * normalizedPhase + 3f
+            }
+
+            outputBuffer[i] = triangleValue * volume
             phase += phaseIncrement
 
-            if (phase >= LOOKUP_TABLE_SIZE) {
-                phase -= LOOKUP_TABLE_SIZE
+            if (phase >= 1f) {
+                phase -= 1f
             }
         }
 

@@ -566,6 +566,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 onValueChange = { onSettingsChange(settings.copy(behindAttenuation = it)) }
             )
 
+            // Smoothing Time
+            SettingSlider(
+                label = "Smoothing Time",
+                value = settings.smoothingTimeMs,
+                valueRange = 0f..2000f,
+                valueText = "${settings.smoothingTimeMs.roundToInt()}ms",
+                onValueChange = { onSettingsChange(settings.copy(smoothingTimeMs = it)) }
+            )
+
             // Freeze Sources Toggle
             Row(
                 modifier = Modifier
@@ -598,6 +607,52 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         uncheckedThumbColor = TextSecondary,
                         uncheckedTrackColor = DarkSurface
                     )
+                )
+            }
+
+            // Simulate Azimuth Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(DarkSurface)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Simulate Azimuth (Debug)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Override phone rotation with slider",
+                        fontSize = 10.sp,
+                        color = TextSecondary
+                    )
+                }
+                Switch(
+                    checked = settings.simulateAzimuth,
+                    onCheckedChange = { onSettingsChange(settings.copy(simulateAzimuth = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = AccentOrange,
+                        checkedTrackColor = AccentOrange.copy(alpha = 0.5f),
+                        uncheckedThumbColor = TextSecondary,
+                        uncheckedTrackColor = DarkSurface
+                    )
+                )
+            }
+
+            // Simulated Azimuth Slider (shown when simulate azimuth is enabled)
+            if (settings.simulateAzimuth) {
+                SettingSlider(
+                    label = "Pan Control (AZ)",
+                    value = settings.simulatedAzimuthValue,
+                    valueRange = -90f..90f,
+                    valueText = "${settings.simulatedAzimuthValue.toInt()}°",
+                    onValueChange = { onSettingsChange(settings.copy(simulatedAzimuthValue = it)) }
                 )
             }
 

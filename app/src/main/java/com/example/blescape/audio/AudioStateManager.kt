@@ -15,10 +15,6 @@ class AudioStateManager(context: Context) {
     private val deviceStates = ConcurrentHashMap<String, DeviceAudioState>()
     private val toneGenerator = ToneGenerator()
 
-    companion object {
-        private const val VOLUME_SMOOTHING_ALPHA = 0.1f
-    }
-
     fun getOrCreateState(device: AudioDevice, forcedAzimuth: Float? = null): DeviceAudioState {
         val deviceId = "${device.type}:${device.address}"
 
@@ -48,8 +44,8 @@ class AudioStateManager(context: Context) {
         }
     }
 
-    fun updateVolume(state: DeviceAudioState, targetVolume: Float) {
-        state.smoothedVolume += VOLUME_SMOOTHING_ALPHA * (targetVolume - state.smoothedVolume)
+    fun updateVolume(state: DeviceAudioState, targetVolume: Float, alpha: Float) {
+        state.smoothedVolume += alpha * (targetVolume - state.smoothedVolume)
     }
 
     fun reset() {

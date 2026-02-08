@@ -123,11 +123,27 @@ class AudioEngine(context: Context) {
 
                 val settings = currentSettings.get()
                 val devices = currentDevices.get().take(settings.maxActiveDevices)
-                val orientation = currentOrientation.get()
+                val rawOrientation = currentOrientation.get()
+
+                // Use simulated azimuth if enabled
+                val orientation = if (settings.simulateAzimuth) {
+                    rawOrientation.copy(azimuth = settings.simulatedAzimuthValue)
+                } else {
+                    rawOrientation
+                }
+
+                // Calculate smoothing coefficient based on smoothing time
+                val frameTimeMs = (FRAME_COUNT.toFloat() / SAMPLE_RATE) * 1000f
+                val smoothingAlpha = if (settings.smoothingTimeMs > 0) {
+                    1f - kotlin.math.exp(-frameTimeMs / settings.smoothingTimeMs)
+                } else {
+                    1f // No smoothing
+                }.coerceIn(0f, 1f)
 
                 // Debug logging and UI update every 50 frames (~1.1 seconds)
                 if (frameCount % 50 == 0 && devices.isNotEmpty()) {
-                    Log.d(TAG, "=== Frame $frameCount === Az: ${orientation.azimuth.toInt()}° | Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
+                    val azSource = if (settings.simulateAzimuth) "SIM" else "REAL"
+                    Log.d(TAG, "=== Frame $frameCount === Az: ${orientation.azimuth.toInt()}° ($azSource) | Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
 
                     val debugText = buildString {
                         appendLine("Phone Azimuth: ${orientation.azimuth.toInt()}°")
@@ -145,7 +161,20 @@ class AudioEngine(context: Context) {
                     val state = audioStateManager.getOrCreateState(device, forcedAzimuth)
 
                     val targetVolume = spatialMixer.rssiToVolume(device.rssi, settings.volumeCurveExponent)
-                    audioStateManager.updateVolume(state, targetVolume)
+                    audioStateManager.updateVolume(state, targetVolume, smoothingAlpha)
+
+                    // When simulating azimuth, use it directly as relative angle (pan control)
+                    val relativeAngle = if (settings.simulateAzimuth) {
+                        settings.simulatedAzimuthValue
+                    } else {
+                        spatialMixer.calculateRelativeAngle(orientation.azimuth, state.worldAzimuth)
+                    }
+                    // No behind attenuation for testing (-90 to +90 only)
+                    val pan = spatialMixer.calculateStereoPan(relativeAngle, 1.0f)
+
+                    // Smooth the pan gains
+                    state.smoothedLeftGain += smoothingAlpha * (pan.left - state.smoothedLeftGain)
+                    state.smoothedRightGain += smoothingAlpha * (pan.right - state.smoothedRightGain)
 
                     deviceBuffer.fill(0f)
                     toneGenerator.generateSamples(
@@ -155,12 +184,6 @@ class AudioEngine(context: Context) {
                         FRAME_COUNT,
                         deviceBuffer
                     )
-
-                    val relativeAngle = spatialMixer.calculateRelativeAngle(
-                        orientation.azimuth,
-                        state.worldAzimuth
-                    )
-                    val pan = spatialMixer.calculateStereoPan(relativeAngle, settings.behindAttenuation)
 
                     // Debug logging for first device every 50 frames
                     if (frameCount % 50 == 0 && index == 0) {
@@ -172,19 +195,87 @@ class AudioEngine(context: Context) {
                         debugLines.add("${index+1}. ${state.frequency.toInt()}Hz @ ${state.worldAzimuth.toInt()}° | Rel:${relativeAngle.toInt()}° | L:${String.format("%.2f", pan.left)} R:${String.format("%.2f", pan.right)} | Vol:${String.format("%.2f", state.smoothedVolume)}")
                     }
 
+                    // Mix using smoothed pan gains
                     for (i in deviceBuffer.indices) {
-                        leftChannel[i] += deviceBuffer[i] * pan.left
-                        rightChannel[i] += deviceBuffer[i] * pan.right
+                        leftChannel[i] += deviceBuffer[i] * state.smoothedLeftGain
+                        rightChannel[i] += deviceBuffer[i] * state.smoothedRightGain
                     }
                 }
 
-                // Send debug info to UI
-                if (frameCount % 50 == 0 && debugLines.isNotEmpty()) {
+                // Send debug info to UI - show panning math table
+                if (frameCount % 50 == 0) {
+                    val azSource = if (settings.simulateAzimuth) "SIMULATED" else "sensor"
+
+                    // Get current panning info
+                    val currentAngle = if (devices.isNotEmpty()) {
+                        val relAngle = if (settings.simulateAzimuth) {
+                            settings.simulatedAzimuthValue
+                        } else {
+                            val state = audioStateManager.getOrCreateState(devices[0], if (settings.maxActiveDevices == 1) 0f else null)
+                            spatialMixer.calculateRelativeAngle(orientation.azimuth, state.worldAzimuth)
+                        }
+                        val pan = spatialMixer.calculateStereoPan(relAngle, 1.0f)
+                        Triple(relAngle.toInt(), pan.left, pan.right)
+                    } else null
+
                     val debugText = buildString {
-                        appendLine("Phone Azimuth: ${orientation.azimuth.toInt()}°")
-                        appendLine("Devices: ${devices.size} | Frozen: ${settings.freezeSources}")
+                        if (settings.simulateAzimuth) {
+                            appendLine("AZ (Pan Control): ${orientation.azimuth.toInt()}°")
+                        } else {
+                            appendLine("Phone Az: ${orientation.azimuth.toInt()}° (sensor)")
+                        }
+                        if (currentAngle != null) {
+                            appendLine("Relative Angle: ${currentAngle.first}°")
+                            appendLine("CURRENT PAN: L=${String.format("%.2f", currentAngle.second)} R=${String.format("%.2f", currentAngle.third)}")
+                        }
+                        appendLine("Devices: ${devices.size}")
                         appendLine()
-                        debugLines.forEach { appendLine(it) }
+                        appendLine("Panning Math (200Hz tone):")
+                        appendLine("AZ    d'  Pan   Left  Right")
+                        appendLine("---   --- ----  ----  -----")
+
+                        // Build list of AZ (pan angles) from -90 to +90
+                        val baseAngles = listOf(-90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90)
+                        val currentAz = orientation.azimuth.toInt().coerceIn(-90, 90)
+
+                        // Combine and sort angles, including current
+                        val testAngles = (baseAngles + currentAz).toSet().sorted()
+
+                        for (azAngle in testAngles) {
+                            // AZ directly controls relative angle when simulating
+                            val angle = azAngle
+                            // Calculate d' (symmetry-adjusted angle)
+                            var dPrime = angle.toFloat()
+                            while (dPrime > 90f) dPrime = 180f - dPrime
+                            while (dPrime < -90f) dPrime = -180f - dPrime
+
+                            val absDPrime = kotlin.math.abs(dPrime)
+                            val panPosition = absDPrime / 90f
+
+                            var rightGain = kotlin.math.sqrt((panPosition + 1f) / 2f)
+                            var leftGain = kotlin.math.sqrt((1f - panPosition) / 2f)
+
+                            if (dPrime < 0f) {
+                                val temp = leftGain
+                                leftGain = rightGain
+                                rightGain = temp
+                            }
+
+                            // No behind attenuation for testing
+                            val finalLeft = leftGain
+                            val finalRight = rightGain
+
+                            // Mark current AZ
+                            val marker = if (azAngle == currentAz) ">" else " "
+
+                            val azStr = String.format("%4d°", azAngle)
+                            val dPrimeStr = String.format("%3d", dPrime.toInt())
+                            val panStr = String.format("%.2f", panPosition)
+                            val leftStr = String.format("%.2f", finalLeft)
+                            val rightStr = String.format("%.2f", finalRight)
+
+                            appendLine("$marker$azStr $dPrimeStr° $panStr  $leftStr  $rightStr")
+                        }
                     }
                     onDebugInfo?.invoke(debugText)
                 }

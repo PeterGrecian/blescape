@@ -17,7 +17,9 @@ data class DeviceAudioState(
     val frequency: Float,
     var worldAzimuth: Float,
     var phase: Float = 0f,
-    var smoothedVolume: Float = 0f
+    var smoothedVolume: Float = 0f,
+    var smoothedLeftGain: Float = 0.71f,   // Start at center
+    var smoothedRightGain: Float = 0.71f   // Start at center
 )
 
 data class StereoPan(
